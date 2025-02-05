@@ -39,6 +39,7 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
     settings: AnnotatorSettings;
     views: Set<AnnotatorView> = new Set();
 
+    //Index signature object
     public pdfAnnotatorFileModes: { [file: string]: string } = {};
     private _loaded = false;
 
@@ -89,6 +90,7 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
         unloadResources();
     }
 
+    //runs when plugin is loaded
     async onloadImpl() {
         await this.loadSettings();
         this.styleObserver = new StyleObserver();
@@ -126,6 +128,7 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
             }
         });
 
+        // adding Annotate option to file menu
         this.registerEvent(
             this.app.workspace.on('file-menu', (menu, file, source, leaf) => {
                 if (
@@ -143,6 +146,8 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
                                 .onClick(async () => {
                                     // any because leaf doesn't have id in type
                                     // eslint-disable-next-line
+                                    // SCOTT: adds this to list of pdfAnnotatorFileModes under file path or leaf id
+                                    // SCOTT: SETS FILE TYPE 
                                     this.pdfAnnotatorFileModes[(leaf as any).id || file.path] = VIEW_TYPE_PDF_ANNOTATOR;
                                     await this.setAnnotatorView(leaf);
                                 })
@@ -311,10 +316,14 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
         }
     }
 
+    // SCOTT: I love this name
+    // Need to find where it loads this into memory
     private registerMonkeyPatches() {
         const self = this;
 
         // Monkey patch WorkspaceLeaf to open Annotations in the Annotation view by default
+        // effects leaf.next()
+        // next is the original method, detach and sVS are both mixins(MPs)
         this.register(
             around(WorkspaceLeaf.prototype, {
                 detach(next) {
@@ -332,8 +341,10 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
                 setViewState(next) {
                     return function (state: ViewState, ...rest: unknown[]) {
                         if (
+                            //if type mark
                             self._loaded &&
                             state.type === 'markdown' &&
+                            //boolean to check viewstate associated with file
                             state.state?.file &&
                             self.pdfAnnotatorFileModes[this.id || state.state.file] !== 'markdown' &&
                             self.settings.annotationMarkdownSettings.annotationModeByDefault === true
@@ -347,7 +358,7 @@ export default class AnnotatorPlugin extends Plugin implements IHasAnnotatorSett
                                 };
 
                                 self.pdfAnnotatorFileModes[state.state.file] = VIEW_TYPE_PDF_ANNOTATOR;
-
+                                //called before 
                                 return next.apply(this, [newState, ...rest]);
                             }
                         }

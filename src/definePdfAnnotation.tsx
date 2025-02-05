@@ -16,6 +16,7 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                     let pdfJsFrame;
                     do {
                         await wait(100);
+                        //pdf is nested in the iframe. This just scans for all iframes
                         pdfJsFrame = iframe.contentDocument.getElementsByTagName('iframe')[0];
                     } while (
                         pdfJsFrame == null ||

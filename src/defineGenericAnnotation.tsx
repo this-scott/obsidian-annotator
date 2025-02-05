@@ -13,6 +13,9 @@ import { getSubtitles } from 'youtube-captions-scraper';
 import getYouTubeMetaData from 'youtube-metadata-scraper';
 import { deleteVideoAnnotation, loadVideoAnnotations, writeVideoAnnotation } from 'videoAnnotationFileUtils';
 import { awaitResourceLoading, resourcesZip, resourceUrls, resourceUrlToPlainText } from 'resourcesFolder';
+import pdfjsLib from 'pdfjs-dist'
+import { createWorker } from 'tesseract.js'
+import { createCanvas } from 'canvas';
 
 const urlToPathMap = new Map();
 const proxiedHosts = new Set(['cdn.hypothes.is', 'via.hypothes.is', 'hypothes.is', 'annotate.tv']);
@@ -70,7 +73,7 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                 getUrl={url => {
                     return getProxiedUrl(url, props, vault);
                 }}
-                fetch={async (requestInfo: RequestInfo, requestInit?: RequestInit) => {
+                                fetch={async (requestInfo: RequestInfo, requestInit?: RequestInit) => {
                     const href = typeof requestInfo == 'string' ? requestInfo : requestInfo.url;
                     const url = new URL(href);
                     let res = null;
@@ -265,6 +268,8 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                             );
                         }
                     }
+                    //storing local data in a buffer
+                    //add a method before buf is called to perform nlp on pdf. Done
                     let buf;
                     if (url.protocol == 'vault:') {
                         try {
@@ -273,7 +278,9 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                             } catch (e) {
                                 buf = await readFromVaultPath(normalizePath(decodeURI(url.pathname)), vault);
                             }
-                            return new Response(buf, {
+
+                            //I don't ever write JS but that await in a response has to be frowned upon
+                            return new Response(await readImagesForText(buf), {
                                 status: 200,
                                 statusText: 'ok'
                             });
@@ -288,7 +295,7 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                                 url.protocol + '//' + url.host + url.pathname + url.search
                             );
                             buf = await readFromVaultPath(vaultPath, vault);
-                            return new Response(buf, {
+                            return new Response(await readImagesForText(buf), {
                                 status: 200,
                                 statusText: 'ok'
                             });
@@ -311,7 +318,7 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                                 );
                             });
 
-                            return new Response(buf, {
+                            return new Response(await readImagesForText(buf), {
                                 status: 200,
                                 statusText: 'ok'
                             });
@@ -339,7 +346,9 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                                 folder.file(`${decodeURI(pathName)}.html`) ||
                                 folder.file(`${decodeURI(pathName)}.json`);
                             const buf = await file.async('arraybuffer');
-                            return new Response(buf, {
+                            //buf will be pdf, should find insertion place below.
+
+                            return new Response(await readImagesForText(buf), {
                                 status: 200,
                                 statusText: 'ok'
                             });
@@ -443,6 +452,7 @@ export default (vault: Vault, plugin: AnnotatorPlugin) => {
                         };
                     });
                 }}
+                //weird
                 webSocketSetup={createServer => {
                     const mockServer = createServer('wss://h-websocket.hypothes.is/ws');
                     mockServer.on('connection', () => '');
@@ -739,4 +749,91 @@ function getVaultPathResourceUrl(vaultPath: string, vault: Vault): string {
             return `error:/${encodeURIComponent(e.toString())}/`;
         }
     }
+}
+
+// apparently its unethical to stop the entire application for nlp
+// prob test this out of prod before integrating
+async function readImagesForText(buf: ArrayBuffer): Promise<ArrayBuffer> {
+    try {
+        const worker = await createWorker('eng', 1 
+            //TODO: need to figure out whether to have this preinstalled or setup handling a no internet sitatuion
+            // ,{
+            //     workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@v5.0.0/dist/worker.min.js',
+            //     langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+            //     corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.0.0',
+            //   }
+            );
+        //extracting image from pdf
+        let image = await extractImageBuffer(buf);
+        
+        //TODO: test overlay
+        const {data: {pdf}} = await worker.recognize(image, {}, {pdf: true});
+        
+        const ab = new Uint8Array(pdf);
+        
+        return ab.buffer; 
+    } catch (error) {
+        console.error('Cannot perform nlp: ', error)
+        return buf
+    }
+}
+
+
+async function extractImageBuffer(buf): Promise<Buffer> {
+    try {
+        //getDocument accepting arraybuffer is wizard
+        const pdf = await pdfjsLib.getDocument(buf).promise
+        /*TODO: Only reading first page rn. Setup to ocr ALL pages during load
+        Note: Choosing to perform this way for faster implementation and easier annotation storage
+        Just don't load textbooks using this fork*/
+        const page = await pdf.getPage(1);
+        const operatorList = await page.getOperatorList();
+
+        const imgIndex = operatorList.fnArray.indexOf(pdfjsLib.OPS.paintImageXObject); 
+        const imgArgs = operatorList.argsArray[imgIndex]; 
+        console.log(imgArgs);
+
+        return new Promise((resolve, reject) => {
+            //creating the image buffer
+            page.objs.get(imgArgs[0], async (arg) => {
+                const canvas = createCanvas(arg.width, arg.height);
+                const ctx = canvas.getContext('2d');
+
+                //might be a little broken
+                const data = new Uint8ClampedArray(arg.width*arg.height*4)
+                let k = 0;
+                let i = 0;
+                while (i < arg.data.length) {
+                    data[k] = arg.data[i]; // r
+                    data[k + 1] = arg.data[i + 1]; // g
+                    data[k + 2] = arg.data[i + 2]; // b
+                    data[k + 3] = 255; // a
+
+                    i += 3;
+                    k += 4;
+                }
+
+
+                const imgData = ctx.createImageData(arg.width, arg.height);
+                imgData.data.set(data);
+                ctx.putImageData(imgData,0,0);
+
+                const buff = canvas.toBuffer();
+                resolve(buff);
+            });
+    });
+} catch (error) {
+    console.error('Error extracting image buffer:', error);
+    throw error;
+  }
+}
+
+function base64ToArrayBuffer(base64) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer; // Returns ArrayBuffer
 }

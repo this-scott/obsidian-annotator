@@ -6,6 +6,17 @@ This is a plugin for Obsidian (https://obsidian.md). It allows you to open and a
 
 The plugin is based on https://web.hypothes.is/, but modified to store the annotations in a local markdown file instead of on the internet. 
 
+## Fork Notes
+This fork implements a [Natural Language Processing](https://tesseract.projectnaptha.com/) library to perform written character recognition on pdfs where text is actually encapsulated by images. This is especially common with old, recently digitized, papers which are often photographs without text encoded. This fork detects text from the pdf's image objects and writes the detections into the pdf during load to seemlessly allow for previously encoded text to be annotated.
+
+**TODO:**\
+Test (lol) \
+Loop all pages during load (slow but simple) \
+Perform NLP on page load instead of PDF load (this would come first but I want a functioning version for my class notes) \
+Setup offline support and find a path for trained data file
+
+
+
 ## Demonstration
 ![annotator demo](https://user-images.githubusercontent.com/9102856/131702952-1aa76baa-a279-474c-978d-cec95a683485.gif)
 

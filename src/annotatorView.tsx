@@ -86,6 +86,7 @@ export default class AnnotatorView extends FileView {
                                 pdf={annotationTarget}
                                 containerEl={this.contentEl}
                                 annotationFile={file.path}
+                                //handling inside iframe
                                 onload={async iframe => {
                                     this.iframe = iframe;
                                 }}
