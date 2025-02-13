@@ -1,6 +1,6 @@
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/elias-sundqvist/obsidian-annotator?style=for-the-badge&sort=semver)](https://github.com/elias-sundqvist/obsidian-annotator/releases/latest)
 ![GitHub All Releases](https://img.shields.io/github/downloads/elias-sundqvist/obsidian-annotator/total?style=for-the-badge)
-# Obsidian Annotator
+# Obsidian Annotator - Fork
 
 This is a plugin for Obsidian (https://obsidian.md). It allows you to open and annotate PDF and EPUB files. 
 
@@ -13,7 +13,7 @@ This fork detects text from the pdf's image objects and writes the detections in
 
 **TODO:**
 1. Test
-2. Loop all pages during load (slow but simple)
+2. Loop all pages during load (slow but simple, need to find a new implementation spot to change to perform step 3)
 3. Perform NLP on page load instead of PDF load (this would come first but I want a functioning version for my class notes)
 4. Setup offline support and find a path for trained data file
 
